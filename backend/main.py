@@ -1,43 +1,63 @@
+from fastapi import FastAPI
+from pydantic import BaseModel
+
 from services.trip_service import (
     calculate_daily_budget,
-    get_trip_category,
-    get_travel_season
+    get_trip_category
 )
 
+app = FastAPI()
 
-print("==================================")
-print("KelanaAI")
-print("==================================")
 
-destination = input("Destination : ")
-days = int(input("Days        : "))
-budget = float(input("Budget      : "))
-travel_month = input("Travel Month: ")
+class TripRequest(BaseModel):
+    destination: str
+    days: int
+    budget: float
+    travel_style: str
 
-category = get_trip_category(budget)
-daily_budget = calculate_daily_budget(budget, days)
-season = get_travel_season(travel_month)
 
-recommended_places = [
-    "Tokyo Tower",
-    "Shibuya",
-    "Mount Fuji"
-]
+# GET endpoint at the root path
+@app.get("/")
+def home():
+    return {
+        "message": "Welcome to KelanaAI"
+    }
 
-print()
-print("==================================")
-print("Trip Summary")
-print("==================================")
-print(f"Destination : {destination}")
-print(f"Days        : {days}")
-print(f"Budget      : {budget} USD")
-print(f"Category    : {category}")
-print(f"Daily Budget: {daily_budget} USD/Day")
-print(f"Travel Month: {travel_month}")
-print(f"Season      : {season}")
 
-print()
-print("Recommended Places")
+# GET health endpoint
+@app.get("/health")
+def health():
+    return {
+        "status": "OK"
+    }
 
-for place in recommended_places:
-    print(f"- {place}")
+
+# GET trip categories
+@app.get("/api/v1/trip-categories")
+def get_trip_categories():
+    return [
+        "Backpacker",
+        "Standard",
+        "Luxury"
+    ]
+
+
+# POST endpoint — receives JSON, returns JSON
+@app.post("/api/v1/trips")
+def create_trip(request: TripRequest):
+    daily_budget = calculate_daily_budget(
+        request.budget,
+        request.days
+    )
+
+    category = get_trip_category(
+        request.budget
+    )
+
+    return {
+        "destination": request.destination,
+        "budget": request.budget,
+        "daily_budget": daily_budget,
+        "category": category,
+        "travel_style": request.travel_style
+    }
