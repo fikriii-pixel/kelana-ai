@@ -13,10 +13,9 @@ class TripRequest(BaseModel):
     destination: str
     days: int
     budget: float
-    travel_style: str
 
 
-# GET endpoint at the root path
+# GET /
 @app.get("/")
 def home():
     return {
@@ -24,7 +23,7 @@ def home():
     }
 
 
-# GET health endpoint
+# GET /health
 @app.get("/health")
 def health():
     return {
@@ -32,17 +31,7 @@ def health():
     }
 
 
-# GET trip categories
-@app.get("/api/v1/trip-categories")
-def get_trip_categories():
-    return [
-        "Backpacker",
-        "Standard",
-        "Luxury"
-    ]
-
-
-# POST endpoint — receives JSON, returns JSON
+# POST /api/v1/trips
 @app.post("/api/v1/trips")
 def create_trip(request: TripRequest):
     daily_budget = calculate_daily_budget(
@@ -56,8 +45,8 @@ def create_trip(request: TripRequest):
 
     return {
         "destination": request.destination,
+        "days": request.days,
         "budget": request.budget,
         "daily_budget": daily_budget,
-        "category": category,
-        "travel_style": request.travel_style
+        "category": category
     }
