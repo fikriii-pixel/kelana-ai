@@ -15,7 +15,7 @@ class TripRequest(BaseModel):
     budget: float
 
 
-# GET /
+
 @app.get("/")
 def home():
     return {
@@ -23,7 +23,7 @@ def home():
     }
 
 
-# GET /health
+
 @app.get("/health")
 def health():
     return {
@@ -31,7 +31,7 @@ def health():
     }
 
 
-# POST /api/v1/trips
+
 @app.post("/api/v1/trips")
 def create_trip(request: TripRequest):
     daily_budget = calculate_daily_budget(
@@ -50,3 +50,21 @@ def create_trip(request: TripRequest):
         "daily_budget": daily_budget,
         "category": category
     }
+
+
+@app.get("/api/v1/recommendations")
+def get_recommendations():
+    return [
+        "Tokyo Tower",
+        "Mount Fuji",
+        "Shibuya"
+    ]
+
+
+@app.get("/api/v1/transportations")
+def get_transportations():
+    return [
+        "Bus",
+        "Train",
+        "Flight"
+    ]
