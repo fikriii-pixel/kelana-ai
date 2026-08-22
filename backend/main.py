@@ -8,6 +8,9 @@ from services.trip_service import (
     calculate_daily_budget,
     get_trip_category
 )
+from services.bedrock_service import (
+    get_ai_recommendation
+)
 
 
 app = FastAPI()
@@ -19,12 +22,14 @@ class TripRequest(BaseModel):
     destination: str
     days: int
     budget: float
+    travel_style: str = "Standard"
 
 
 class TripUpdate(BaseModel):
     destination: str
     days: int
     budget: float
+    travel_style: str = "Standard"
 
 
 @app.get("/")
@@ -52,13 +57,21 @@ def create_trip(request: TripRequest):
     category = get_trip_category(
         request.budget
     )
+    
+    ai_recommendation = get_ai_recommendation(
+        destination = request.destination,
+        days = request.days,
+        budget = request.budget,
+        travel_style = request.travel_style,
+    )
 
     trip = Trip(
         destination=request.destination,
         days=request.days,
         budget=request.budget,
         category=category,
-        daily_budget=daily_budget
+        daily_budget=daily_budget,
+        ai_recommendation=ai_recommendation
     )
 
     db = SessionLocal()
@@ -135,6 +148,7 @@ def update_trip(trip_id: int, request: TripUpdate):
     trip.budget = request.budget
     trip.category = category
     trip.daily_budget = daily_budget
+    trip.ai_recommendation = ai_recommendation
 
     db.commit()
     db.refresh(trip)
