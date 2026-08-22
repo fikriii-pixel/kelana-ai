@@ -58,21 +58,29 @@ def get_ai_recommendation(
         str: AI-generated itinerary text.
     """
     prompt = f"""
-You are an expert travel planner. Create a detailed travel itinerary based on the following details:
+You are an expert travel planner. Create a detailed and structured daily travel itinerary based on these details:
 
 Trip Details:
 - Destination: {destination}
-- Number of Days: {days} days
+- Duration: {days} days
 - Total Budget: USD {budget}
 - Travel Style: {travel_style}
 
-Please include the following in your recommendation:
-1. Daily itinerary
-2. Estimated daily budget
-3. Local food recommendations
-4. Transportation suggestions
+For EACH day of the trip, you MUST structure the output into three specific time periods with these requirements:
 
-Format your response as Markdown with headers (##) and bullet lists (-).
+1. Morning:
+- Provide 2-3 specific morning activities (e.g., early sightseeing, breakfast spot, or morning walk).
+
+2. Afternoon:
+- Focus on cultural sites (e.g., temples, museums, historical landmarks) and immersive local experiences.
+
+3. Evening:
+- Suggest specific dinner spots (e.g., local eateries, markets, or authentic restaurants).
+- Recommend vibrant local nightlife or evening activities suited for the travel style.
+
+Formatting Instructions:
+- Format the response in Markdown using headers (## for Days, ### for Morning/Afternoon/Evening) and bullet lists (-).
+- Include estimated daily expenses and transportation tips where relevant.
 """
 
     model_id = os.getenv("MODEL_ID", "amazon.nova-lite-v1:0")
