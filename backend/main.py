@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from models.trip import Trip
@@ -14,6 +15,15 @@ from services.bedrock_service import (
 
 
 app = FastAPI()
+
+# Allow the Next.js dev server (and any local origin) to call the API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 init_db()
 
@@ -148,7 +158,12 @@ def update_trip(trip_id: int, request: TripUpdate):
     trip.budget = request.budget
     trip.category = category
     trip.daily_budget = daily_budget
-    trip.ai_recommendation = ai_recommendation
+    trip.ai_recommendation = get_ai_recommendation(
+        destination=request.destination,
+        days=request.days,
+        budget=request.budget,
+        travel_style=request.travel_style,
+    )
 
     db.commit()
     db.refresh(trip)

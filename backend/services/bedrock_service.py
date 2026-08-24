@@ -1,8 +1,6 @@
 import os
 import json
 import boto3
-from botocore.auth import SigV4Auth
-from botocore.awsrequest import AWSRequest
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
