@@ -125,7 +125,7 @@ function TripNotFound({ id }: { id: string }) {
           <div className="text-5xl">🗺️</div>
           <div className="space-y-1.5">
             <h2 className="text-xl font-black uppercase tracking-tight text-black">
-              Trip #{id} doesn't exist
+              Trip #{id} doesnt exist
             </h2>
             <p className="text-sm font-bold text-gray-500 max-w-xs">
               This itinerary may have been deleted or the ID is invalid.
