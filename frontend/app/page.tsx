@@ -2,6 +2,9 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
+import { generateTrip, TripRequestPayload, TripResponse } from '@/services/tripService';
+import { parseItinerary, DaySection } from '@/lib/parseItinerary';
 
 // ─── TypeScript Interfaces ────────────────────────────────────────────────────
 
@@ -10,69 +13,6 @@ interface TripFormData {
   budget: string;
   days: string;
   travelStyle: string;
-}
-
-interface TripRequestPayload {
-  destination: string;
-  budget: number;
-  days: number;
-  travel_style: string;
-}
-
-interface TripResponse {
-  id: number;
-  destination: string;
-  days: number;
-  budget: number;
-  category: string;
-  daily_budget: number;
-  ai_recommendation: string;
-  created_at: string;
-}
-
-// ─── Helper: parse markdown itinerary into structured sections ────────────────
-
-interface DaySection {
-  title: string;
-  blocks: { heading: string; items: string[] }[];
-}
-
-function parseItinerary(raw: string): DaySection[] {
-  const lines = raw.split('\n').map((l) =>
-    l.replace(/^\*\*(##[^*]*)\*\*/, '$1').trimEnd()
-  );
-  const days: DaySection[] = [];
-  let currentDay: DaySection | null = null;
-  let currentBlock: { heading: string; items: string[] } | null = null;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-
-    if (/^#{2}\s/.test(trimmed) && !/^#{3}/.test(trimmed)) {
-      if (currentBlock && currentDay) currentDay.blocks.push(currentBlock);
-      if (currentDay) days.push(currentDay);
-      currentDay = { title: trimmed.replace(/^#{2}\s*/, ''), blocks: [] };
-      currentBlock = null;
-    } else if (/^#{3}\s/.test(trimmed)) {
-      if (currentBlock && currentDay) currentDay.blocks.push(currentBlock);
-      currentBlock = { heading: trimmed.replace(/^#{3}\s*/, ''), items: [] };
-    } else if (/^[-*]\s/.test(trimmed)) {
-      const text = trimmed.replace(/^[-*]\s*/, '');
-      if (currentBlock) {
-        currentBlock.items.push(text);
-      } else if (currentDay) {
-        const last = currentDay.blocks[currentDay.blocks.length - 1];
-        if (last) last.items.push(text);
-      }
-    } else {
-      if (currentBlock) currentBlock.items.push(trimmed);
-    }
-  }
-
-  if (currentBlock && currentDay) currentDay.blocks.push(currentBlock);
-  if (currentDay) days.push(currentDay);
-  return days;
 }
 
 // ─── Travel styles config ─────────────────────────────────────────────────────
@@ -253,6 +193,8 @@ function ResultPanel({ trip }: { trip: TripResponse }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function TripPage() {
+  const router = useRouter();
+
   const [formData, setFormData] = useState<TripFormData>({
     destination: '',
     budget: '',
@@ -281,26 +223,19 @@ export default function TripPage() {
     };
 
     try {
-      const res = await fetch('http://localhost:8000/api/v1/trips', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData?.detail ?? `Server error: ${res.status} ${res.statusText}`);
-      }
-
-      const data: TripResponse = await res.json();
-      setResult(data);
+      await generateTrip(payload);
+      // Invalidate the Server Component cache so the new trip appears
+      // immediately on /trips, then navigate there.
+      router.refresh();
+      router.push('/trips');
+      // isLoading stays true intentionally — keeps the button disabled
+      // during the page transition, preventing double submissions.
     } catch (err: unknown) {
       if (err instanceof TypeError && err.message.includes('fetch')) {
         setError('Cannot reach the backend. Make sure the FastAPI server is running on http://localhost:8000.');
       } else {
         setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
       }
-    } finally {
       setIsLoading(false);
     }
   };
