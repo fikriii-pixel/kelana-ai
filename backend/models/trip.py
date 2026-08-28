@@ -12,6 +12,7 @@ class Trip(Base):
     budget = Column(Float, nullable=False)
     category = Column(String, nullable=False)
     daily_budget = Column(Float, nullable=False)
+    travel_style = Column(String(50), nullable=True, default="Solo")
     ai_recommendation = Column(Text, nullable=True)
 
     created_at = Column(

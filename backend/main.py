@@ -81,6 +81,7 @@ def create_trip(request: TripRequest):
         budget=request.budget,
         category=category,
         daily_budget=daily_budget,
+        travel_style=request.travel_style,
         ai_recommendation=ai_recommendation
     )
 
@@ -158,6 +159,7 @@ def update_trip(trip_id: int, request: TripUpdate):
     trip.budget = request.budget
     trip.category = category
     trip.daily_budget = daily_budget
+    trip.travel_style = request.travel_style
     trip.ai_recommendation = get_ai_recommendation(
         destination=request.destination,
         days=request.days,
