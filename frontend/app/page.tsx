@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { generateTrip, TripRequestPayload, TripResponse } from '@/services/tripService';
 import { parseItinerary, DaySection } from '@/lib/parseItinerary';
+import Navbar from '@/components/Navbar';
 
 // ─── TypeScript Interfaces ────────────────────────────────────────────────────
 
@@ -243,9 +244,11 @@ export default function TripPage() {
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#f4f4f0', fontFamily: "'Space Grotesk', 'Inter', system-ui, sans-serif" }}>
 
+      {/* ── Navbar ── */}
+      <Navbar actionHref="/trips" actionLabel="My Trips" />
+
       {/* ── Hero Section ── */}
-      <section className="relative w-full h-[520px] md:h-[620px] border-b-4 border-black overflow-hidden">
-        <Image
+      <section className="relative w-full h-[520px] md:h-[620px] border-b-4 border-black overflow-hidden">        <Image
           src="/hero.jpg"
           alt="Vibrant travel destination — Positano, Italy at sunset"
           fill
@@ -269,7 +272,6 @@ export default function TripPage() {
               </span>
             </div>
           </div>
-
           {/* Hero text */}
           <div>
             <div className="inline-block bg-black text-[#f9e07a] text-xs font-black uppercase tracking-widest px-3 py-1 mb-4 border-2 border-[#f9e07a]">

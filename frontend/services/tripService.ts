@@ -1,7 +1,10 @@
-// All trip-related API calls live here.
-// If the API URL changes, update API_URL once — not every page.
+/**
+ * services/tripService.ts
+ * All trip-related API calls — authenticated via fetchWithAuth.
+ * If the API URL changes, update API_URL once here.
+ */
 
-const API_URL = "http://localhost:8000/api/v1";
+import { fetchWithAuth } from '@/lib/api';
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -10,6 +13,7 @@ export interface TripRequestPayload {
   budget: number;
   days: number;
   travel_style: string;
+  // NOTE: user_id is intentionally absent — the backend injects it from the JWT.
 }
 
 export interface TripResponse {
@@ -19,38 +23,35 @@ export interface TripResponse {
   budget: number;
   category: string;
   daily_budget: number;
+  travel_style: string;
   ai_recommendation: string;
+  user_id: number;
   created_at: string;
 }
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
-/** Fetch all saved trips */
+/** Fetch all trips belonging to the authenticated user */
 export async function getTrips(): Promise<TripResponse[]> {
-  const res = await fetch(`${API_URL}/trips`, {
-    headers: { "Content-Type": "application/json" },
-  });
+  const res = await fetchWithAuth('/trips');
   if (!res.ok) throw new Error(`Failed to fetch trips: ${res.status}`);
   return res.json();
 }
 
 /** Fetch a single trip by ID */
 export async function getTrip(id: number): Promise<TripResponse> {
-  const res = await fetch(`${API_URL}/trips/${id}`, {
-    headers: { "Content-Type": "application/json" },
-  });
+  const res = await fetchWithAuth(`/trips/${id}`);
   if (!res.ok) throw new Error(`Trip #${id} not found: ${res.status}`);
   return res.json();
 }
 
-/** Create a new trip and get an AI itinerary */
+/** Create a new trip — user_id is assigned server-side from JWT */
 export async function generateTrip(
   data: TripRequestPayload
 ): Promise<TripResponse> {
-  const res = await fetch(`${API_URL}/trips`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
+  const res = await fetchWithAuth('/trips', {
+    method: 'POST',
+    body:   JSON.stringify(data),
   });
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
@@ -66,10 +67,9 @@ export async function updateTrip(
   id: number,
   data: TripRequestPayload
 ): Promise<TripResponse> {
-  const res = await fetch(`${API_URL}/trips/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
+  const res = await fetchWithAuth(`/trips/${id}`, {
+    method: 'PUT',
+    body:   JSON.stringify(data),
   });
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
@@ -82,9 +82,6 @@ export async function updateTrip(
 
 /** Delete a trip by ID */
 export async function deleteTrip(id: number): Promise<void> {
-  const res = await fetch(`${API_URL}/trips/${id}`, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-  });
+  const res = await fetchWithAuth(`/trips/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`Failed to delete trip #${id}: ${res.status}`);
 }
