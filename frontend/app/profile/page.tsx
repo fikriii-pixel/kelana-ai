@@ -47,7 +47,8 @@ export default function ProfilePage() {
   // Redirect to login if no token/user after loading
   useEffect(() => {
     if (!isLoading && !user) {
-showToast('Please log in to view your profile.', 'error');      router.replace('/login');
+      showToast('Please log in to view your profile.', 'info');
+      router.replace('/login');
     }
   }, [isLoading, user, router, showToast]);
 

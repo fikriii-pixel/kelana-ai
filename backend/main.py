@@ -169,7 +169,11 @@ def get_trips(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Return only the trips that belong to the authenticated user."""
+    """
+    Fetch all trips belonging to the authenticated user.
+    Automatically filters by Trip.user_id == current_user.id.
+    Only returns trips owned by the authenticated user.
+    """
     trips = (
         db.query(Trip)
         .filter(Trip.user_id == current_user.id)
@@ -185,14 +189,25 @@ def get_trip(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Fetch a single trip — 404 if it doesn't exist or belongs to another user."""
-    trip = (
-        db.query(Trip)
-        .filter(Trip.id == trip_id, Trip.user_id == current_user.id)
-        .first()
-    )
+    """
+    Fetch a single trip — check existence first (404), then ownership (403).
+    Only the trip owner can view their trip.
+    """
+    # ── 1. Retrieve trip by ID ────────────────────────────────────────────────
+    trip = db.query(Trip).filter(Trip.id == trip_id).first()
     if trip is None:
-        raise HTTPException(status_code=404, detail="Trip not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trip not found"
+        )
+
+    # ── 2. Check ownership ────────────────────────────────────────────────────
+    if trip.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to view this trip"
+        )
+
     return _trip_to_dict(trip)
 
 
@@ -203,15 +218,26 @@ def update_trip(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Update a trip — 404 if it doesn't exist or belongs to another user."""
-    trip = (
-        db.query(Trip)
-        .filter(Trip.id == trip_id, Trip.user_id == current_user.id)
-        .first()
-    )
+    """
+    Update a trip — check existence first (404), then ownership (403).
+    Only the trip owner can update their trip.
+    """
+    # ── 1. Retrieve trip by ID ────────────────────────────────────────────────
+    trip = db.query(Trip).filter(Trip.id == trip_id).first()
     if trip is None:
-        raise HTTPException(status_code=404, detail="Trip not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trip not found"
+        )
 
+    # ── 2. Check ownership ────────────────────────────────────────────────────
+    if trip.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to update this trip"
+        )
+
+    # ── 3. Update trip ────────────────────────────────────────────────────────
     daily_budget = calculate_daily_budget(request.budget, request.days)
     category     = get_trip_category(request.budget)
 
@@ -238,14 +264,26 @@ def delete_trip(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Delete a trip — 404 if it doesn't exist or belongs to another user."""
-    trip = (
-        db.query(Trip)
-        .filter(Trip.id == trip_id, Trip.user_id == current_user.id)
-        .first()
-    )
+    """
+    Delete a trip — check existence first (404), then ownership (403).
+    Only the trip owner can delete their trip.
+    """
+    # ── 1. Retrieve trip by ID ────────────────────────────────────────────────
+    trip = db.query(Trip).filter(Trip.id == trip_id).first()
     if trip is None:
-        raise HTTPException(status_code=404, detail="Trip not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trip not found"
+        )
+
+    # ── 2. Check ownership ────────────────────────────────────────────────────
+    if trip.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to delete this trip"
+        )
+
+    # ── 3. Delete trip ───────────────────────────────────────────────────────
     db.delete(trip)
     db.commit()
     return {"message": "Trip deleted successfully"}

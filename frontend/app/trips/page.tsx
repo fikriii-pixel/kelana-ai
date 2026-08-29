@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { getToken, clearToken } from '@/lib/api';
+import { getToken } from '@/lib/api';
 import { getTrips } from '@/services/tripService';
 import { TripResponse } from '@/services/tripService';
 import TripsDashboard from '@/components/TripsDashboard';
@@ -38,11 +37,6 @@ export default function TripsPage() {
       })
       .finally(() => setLoading(false));
   }, [router]);
-
-  const handleLogout = () => {
-    clearToken();
-    router.push('/login');
-  };
 
   // Show nothing while checking token / fetching (avoids flash)
   if (loading) {

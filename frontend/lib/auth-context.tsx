@@ -1,9 +1,13 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { getToken, clearToken, fetchWithAuth } from '@/lib/api';
-
-// ── Types ─────────────────────────────────────────────────────────────────────
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react';
+import { clearToken, fetchWithAuth, getToken } from '@/lib/api';
 
 export interface UserProfile {
   id: number;
@@ -20,23 +24,18 @@ interface AuthContextType {
   logout: () => void;
 }
 
-// ── Context ───────────────────────────────────────────────────────────────────
-
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// ── Provider ──────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch user profile from /api/v1/auth/me
-  const fetchUserProfile = async () => {
+  const fetchUserProfile = async (): Promise<void> => {
     try {
       const token = getToken();
+
       if (!token) {
         setUser(null);
-        setIsLoading(false);
         return;
       }
 
@@ -56,14 +55,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // On mount, try to restore user from token
   useEffect(() => {
-    fetchUserProfile();
+    queueMicrotask(() => {
+      void fetchUserProfile();
+    });
   }, []);
 
-  const logout = () => {
+  const logout = (): void => {
     setUser(null);
     clearToken();
+    document.cookie = 'auth-token=; path=/; max-age=0';
   };
 
   return (
@@ -81,9 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
-
-export function useAuth() {
+export function useAuth(): AuthContextType {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');

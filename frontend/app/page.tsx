@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { generateTrip, TripRequestPayload, TripResponse } from '@/services/tripService';
 import { parseItinerary, DaySection } from '@/lib/parseItinerary';
 import Navbar from '@/components/Navbar';
+import { getToken } from '@/lib/api';
 
 // ─── TypeScript Interfaces ────────────────────────────────────────────────────
 
@@ -205,6 +206,15 @@ export default function TripPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult]       = useState<TripResponse | null>(null);
   const [error, setError]         = useState<string | null>(null);
+
+  // ── Auth guard — redirect to login if no token ─────────────────────────────
+  useEffect(() => {
+    const token = getToken();
+    if (!token) {
+      router.replace('/login');
+      return;
+    }
+  }, [router]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));

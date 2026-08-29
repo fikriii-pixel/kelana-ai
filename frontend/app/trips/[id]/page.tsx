@@ -1,17 +1,11 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
-import { getTrip } from '@/services/tripService';
+import { useParams } from 'next/navigation';
+import { fetchWithAuth } from '@/lib/api';
+import type { TripResponse } from '@/services/tripService';
 import { parseItinerary, DaySection, DayBlock } from '@/lib/parseItinerary';
-
-// ── Next.js App Router — async Server Component ───────────────────────────────
-
-export const dynamic = 'force-dynamic';
-
-// ── Route params type (Next.js 15 wraps params in a Promise) ─────────────────
-
-interface PageProps {
-  params: Promise<{ id: string }>;
-}
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -125,7 +119,7 @@ function TripNotFound({ id }: { id: string }) {
           <div className="text-5xl">🗺️</div>
           <div className="space-y-1.5">
             <h2 className="text-xl font-black uppercase tracking-tight text-black">
-              Trip #{id} doesnt exist
+              Trip #{id} does not exist
             </h2>
             <p className="text-sm font-bold text-gray-500 max-w-xs">
               This itinerary may have been deleted or the ID is invalid.
@@ -143,27 +137,128 @@ function TripNotFound({ id }: { id: string }) {
   );
 }
 
+function TripForbidden({ id }: { id: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 px-4">
+      <div className="border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] bg-white w-full max-w-md overflow-hidden">
+        <div className="bg-[#f9e07a] border-b-4 border-black px-6 py-4 flex items-center gap-3">
+          <span className="text-2xl">🔒</span>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-black/60">Error 403</p>
+            <p className="text-sm font-black uppercase tracking-wide text-black">Access Denied</p>
+          </div>
+        </div>
+        <div className="px-6 py-8 flex flex-col items-center text-center gap-5">
+          <div className="text-5xl">🚫</div>
+          <div className="space-y-1.5">
+            <h2 className="text-xl font-black uppercase tracking-tight text-black">
+              You do not have access to this trip
+            </h2>
+            <p className="text-sm font-bold text-gray-500 max-w-xs">
+              Trip #{id} belongs to another account.
+            </p>
+          </div>
+          <div className="flex w-full gap-3">
+            <Link
+              href="/trips"
+              className="inline-flex items-center justify-center gap-2 flex-1 py-3 border-4 border-black bg-black text-[#f9e07a] text-xs font-black uppercase tracking-widest"
+            >
+              Dashboard
+            </Link>
+            <Link
+              href="/login"
+              className="inline-flex items-center justify-center gap-2 flex-1 py-3 border-4 border-black bg-white text-black text-xs font-black uppercase tracking-widest"
+            >
+              Switch Account
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default async function TripDetailPage({ params }: PageProps) {
-  // Await params — required in Next.js 15 App Router
-  const { id } = await params;
+export default function TripDetailPage() {
+  const params = useParams<{ id: string }>();
+  const id = params.id;
   const numericId = Number(id);
+  const hasInvalidId = !id || Number.isNaN(numericId);
+  const [trip, setTrip] = useState<TripResponse | null>(null);
+  const [fetchStatus, setFetchStatus] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Guard: non-numeric IDs → 404
-  if (!id || isNaN(numericId)) notFound();
+  useEffect(() => {
+    if (hasInvalidId) return;
 
-  let trip: Awaited<ReturnType<typeof getTrip>> | null = null;
-  let fetchError = false;
+    let cancelled = false;
 
-  try {
-    trip = await getTrip(numericId);
-  } catch {
-    fetchError = true;
+    const loadTrip = async () => {
+      try {
+        const response = await fetchWithAuth(`/trips/${numericId}`);
+
+        if (!response.ok) {
+          if (!cancelled) setFetchStatus(response.status);
+          return;
+        }
+
+        const data: TripResponse = await response.json();
+        if (!cancelled) setTrip(data);
+      } catch {
+        if (!cancelled) setFetchStatus(500);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    void loadTrip();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasInvalidId, numericId]);
+
+  if (hasInvalidId) {
+    return (
+      <div
+        className="min-h-screen flex flex-col"
+        style={{ backgroundColor: '#f4f4f0', fontFamily: "'Space Grotesk','Inter',system-ui,sans-serif" }}
+      >
+        <TripNotFound id={id ?? ''} />
+      </div>
+    );
   }
 
-  // Trip not found or API error
-  if (fetchError || !trip) {
+  if (isLoading) {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: '#f4f4f0' }}
+      >
+        <div className="border-4 border-black bg-[#f9e07a] px-8 py-6 text-sm font-black uppercase tracking-widest">
+          Loading trip...
+        </div>
+      </div>
+    );
+  }
+
+  if (fetchStatus === 401) {
+    return null;
+  }
+
+  if (fetchStatus === 403) {
+    return (
+      <div
+        className="min-h-screen flex flex-col"
+        style={{ backgroundColor: '#f4f4f0', fontFamily: "'Space Grotesk','Inter',system-ui,sans-serif" }}
+      >
+        <TripForbidden id={id} />
+      </div>
+    );
+  }
+
+  if (fetchStatus === 404 || !trip) {
     return (
       <div
         className="min-h-screen flex flex-col"

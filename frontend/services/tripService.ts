@@ -38,13 +38,13 @@ export async function getTrips(): Promise<TripResponse[]> {
   return res.json();
 }
 
-/** Fetch a single trip by ID */
+
+/** Fetch a single trip by ID using the client-safe auth wrapper */
 export async function getTrip(id: number): Promise<TripResponse> {
   const res = await fetchWithAuth(`/trips/${id}`);
   if (!res.ok) throw new Error(`Trip #${id} not found: ${res.status}`);
   return res.json();
 }
-
 /** Create a new trip — user_id is assigned server-side from JWT */
 export async function generateTrip(
   data: TripRequestPayload

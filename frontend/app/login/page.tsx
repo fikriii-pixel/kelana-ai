@@ -80,6 +80,8 @@ export default function LoginPage() {
 
       const data: TokenResponse = await res.json();
       setToken(data.access_token);
+
+      document.cookie = `auth-token=${data.access_token}; path=/; max-age=3600`;
       
       // Fetch user profile from /api/v1/auth/me
       await fetchUserProfile();
@@ -98,10 +100,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div
-      className="min-h-screen flex flex-col"
-      style={{ backgroundColor: '#f4f4f0', fontFamily: "'Space Grotesk','Inter',system-ui,sans-serif" }}
-    >
+      <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#f4f4f0', fontFamily: "'Space Grotesk','Inter',system-ui,sans-serif" }}>
       {/* ── Nav ── */}
       <header className="border-b-4 border-black bg-[#f9e07a]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
