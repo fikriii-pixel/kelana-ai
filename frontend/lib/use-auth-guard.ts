@@ -32,7 +32,7 @@ export function useAuthGuard(
     const token = getToken();
     if (!token) {
       if (shouldShowToast) {
-        showToast(toastMessage, 'warning');
+        showToast(toastMessage, 'info');
       }
       router.replace(redirectTo);
     }

@@ -8,7 +8,13 @@
  * - Safe to call from any client-side context (browser only).
  */
 
-const API_BASE = "http://localhost:8000/api/v1";
+const API_BASE = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1`;
+
+export interface AssistantResponse {
+  question: string;
+  answer: string;
+  sources: string[];
+}
 
 // ── Token helpers ─────────────────────────────────────────────────────────────
 
@@ -53,4 +59,28 @@ export async function fetchWithAuth(
   }
 
   return res;
+}
+
+export async function askAssistant(question: string): Promise<AssistantResponse> {
+  const response = await fetchWithAuth("/ask", {
+    method: "POST",
+    body: JSON.stringify({ question }),
+  });
+
+  if (!response.ok) {
+    let detail = "The assistant could not retrieve an answer.";
+    try {
+      const payload = (await response.json()) as { detail?: string };
+      if (payload.detail) detail = payload.detail;
+    } catch {
+      // Keep the useful fallback when the server returns a non-JSON response.
+    }
+
+    if (response.status === 403) {
+      throw new Error("You do not have permission to use the travel assistant.");
+    }
+    throw new Error(detail);
+  }
+
+  return (await response.json()) as AssistantResponse;
 }

@@ -2,11 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { generateTrip, TripRequestPayload, TripResponse } from '@/services/tripService';
 import { parseItinerary, DaySection } from '@/lib/parseItinerary';
 import Navbar from '@/components/Navbar';
-import { getToken } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 
 // ─── TypeScript Interfaces ────────────────────────────────────────────────────
 
@@ -20,18 +21,18 @@ interface TripFormData {
 // ─── Travel styles config ─────────────────────────────────────────────────────
 
 const TRAVEL_STYLES = [
-  { value: 'Solo', label: 'Solo Explorer', icon: '🧭' },
-  { value: 'Family', label: 'Family Trip', icon: '👨‍👩‍👧' },
-  { value: 'Luxury', label: 'Luxury', icon: '💎' },
-  { value: 'Budget', label: 'Budget', icon: '🎒' },
+  { value: 'Solo', label: 'Solo Explorer', icon: '🧭', description: 'Independent travel' },
+  { value: 'Family', label: 'Family Trip', icon: '👨‍👩‍👧', description: 'Kid-friendly activities' },
+  { value: 'Luxury', label: 'Luxury', icon: '💎', description: 'Premium experiences' },
+  { value: 'Budget', label: 'Budget', icon: '🎒', description: 'Cost-conscious travel' },
 ];
 
 // ─── Category color map ───────────────────────────────────────────────────────
 
 const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  Budget:   { bg: 'bg-[#b8f0a0]', text: 'text-black', border: 'border-black' },
+  Budget: { bg: 'bg-[#b8f0a0]', text: 'text-black', border: 'border-black' },
   Standard: { bg: 'bg-[#a0d4f0]', text: 'text-black', border: 'border-black' },
-  Luxury:   { bg: 'bg-[#f9e07a]', text: 'text-black', border: 'border-black' },
+  Luxury: { bg: 'bg-[#f9e07a]', text: 'text-black', border: 'border-black' },
 };
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -98,7 +99,7 @@ function DayCard({ day, index }: { day: DaySection; index: number }) {
   const headerColor = colors[index % colors.length];
 
   return (
-    <div className="border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
+    <div className="border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] overflow-hidden transition-all hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-[2px]">
       <div className={`px-5 py-3 border-b-4 border-black flex items-center gap-3 ${headerColor}`}>
         <span className="flex items-center justify-center w-8 h-8 rounded-full border-2 border-black bg-black text-white text-xs font-black">
           {index + 1}
@@ -107,7 +108,7 @@ function DayCard({ day, index }: { day: DaySection; index: number }) {
       </div>
       <div className="divide-y-2 divide-black bg-white">
         {day.blocks.map((block, bi) => (
-          <div key={bi} className="px-5 py-4">
+          <div key={bi} className="px-5 py-4 hover:bg-[#f4f4f0] transition-colors">
             <h4 className="flex items-center gap-2 text-xs font-black text-black uppercase tracking-widest mb-2.5 border-b-2 border-black/20 pb-1.5">
               <BlockIcon heading={block.heading} />
               {block.heading}
@@ -165,10 +166,10 @@ function ResultPanel({ trip }: { trip: TripResponse }) {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard icon="📅" label="Duration"     value={`${trip.days} days`}                   color="bg-[#a0d4f0]" />
-        <StatCard icon="💰" label="Total Budget" value={`$${trip.budget.toLocaleString()}`}    color="bg-[#f9e07a]" />
+        <StatCard icon="📅" label="Duration" value={`${trip.days} days`} color="bg-[#a0d4f0]" />
+        <StatCard icon="💰" label="Total Budget" value={`$${trip.budget.toLocaleString()}`} color="bg-[#f9e07a]" />
         <StatCard icon="📆" label="Daily Budget" value={`$${trip.daily_budget.toFixed(0)}/day`} color="bg-[#b8f0a0]" />
-        <StatCard icon="✈️" label="Trip Style"   value={trip.category}                          color="bg-[#f9a8d4]" />
+        <StatCard icon="✈️" label="Trip Style" value={trip.category} color="bg-[#f9a8d4]" />
       </div>
 
       <div className="flex items-center gap-3">
@@ -196,6 +197,8 @@ function ResultPanel({ trip }: { trip: TripResponse }) {
 
 export default function TripPage() {
   const router = useRouter();
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const [scrolled, setScrolled] = useState(false);
 
   const [formData, setFormData] = useState<TripFormData>({
     destination: '',
@@ -204,17 +207,16 @@ export default function TripPage() {
     travelStyle: 'Solo',
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [result, setResult]       = useState<TripResponse | null>(null);
-  const [error, setError]         = useState<string | null>(null);
+  const [result, setResult] = useState<TripResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // ── Auth guard — redirect to login if no token ─────────────────────────────
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.replace('/login');
-      return;
-    }
-  }, [router]);
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 100);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -227,20 +229,16 @@ export default function TripPage() {
     setResult(null);
 
     const payload: TripRequestPayload = {
-      destination:  formData.destination.trim(),
-      budget:       Number(formData.budget),
-      days:         Number(formData.days),
+      destination: formData.destination.trim(),
+      budget: Number(formData.budget),
+      days: Number(formData.days),
       travel_style: formData.travelStyle,
     };
 
     try {
       await generateTrip(payload);
-      // Invalidate the Server Component cache so the new trip appears
-      // immediately on /trips, then navigate there.
       router.refresh();
       router.push('/trips');
-      // isLoading stays true intentionally — keeps the button disabled
-      // during the page transition, preventing double submissions.
     } catch (err: unknown) {
       if (err instanceof TypeError && err.message.includes('fetch')) {
         setError('Cannot reach the backend. Make sure the FastAPI server is running on http://localhost:8000.');
@@ -252,20 +250,25 @@ export default function TripPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#f4f4f0', fontFamily: "'Space Grotesk', 'Inter', system-ui, sans-serif" }}>
+    <div className="min-h-screen flex flex-col bg-[#f4f4f0]" style={{ fontFamily: "'Space Grotesk', 'Inter', system-ui, sans-serif" }}>
 
       {/* ── Navbar ── */}
-      <Navbar actionHref="/trips" actionLabel="My Trips" />
+      <Navbar 
+        actionHref="/trips" 
+        actionLabel="My Trips" 
+        className={scrolled ? 'shadow-[0_4px_0px_0px_rgba(0,0,0,0.8)]' : ''}
+      />
 
       {/* ── Hero Section ── */}
-      <section className="relative w-full h-[520px] md:h-[620px] border-b-4 border-black overflow-hidden">        <Image
+      <section className="relative w-full h-[480px] md:h-[560px] border-b-4 border-black overflow-hidden">
+        <Image
           src="/hero.jpg"
           alt="Vibrant travel destination — Positano, Italy at sunset"
           fill
           priority
           className="object-cover"
         />
-        <div className="absolute inset-0 bg-black/40" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/70" />
 
         <div className="relative z-10 h-full flex flex-col justify-between p-6 md:p-10">
           {/* Top bar */}
@@ -277,18 +280,20 @@ export default function TripPage() {
               <span className="bg-[#a0d4f0] border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-black text-xs font-black px-2.5 py-1 uppercase tracking-wide">
                 🤖 AWS Bedrock
               </span>
-              <span className="bg-[#f9a8d4] border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-black text-xs font-black px-2.5 py-1 uppercase tracking-wide">
+              <span className="hidden sm:inline bg-[#f9a8d4] border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-black text-xs font-black px-2.5 py-1 uppercase tracking-wide">
                 ⚡ AI-Powered
               </span>
             </div>
           </div>
+
           {/* Hero text */}
-          <div>
+          <div className="max-w-3xl">
             <div className="inline-block bg-black text-[#f9e07a] text-xs font-black uppercase tracking-widest px-3 py-1 mb-4 border-2 border-[#f9e07a]">
               ✈ Your AI Travel Companion
             </div>
-            <h1 className="text-5xl md:text-7xl font-black text-white uppercase leading-none tracking-tight drop-shadow-2xl">
-              Plan Your<br />
+            <h1 className="text-4xl sm:text-5xl md:text-7xl font-black text-white uppercase leading-none tracking-tight drop-shadow-2xl">
+              Plan Your
+              <br />
               <span
                 className="text-[#f9e07a]"
                 style={{ WebkitTextStroke: '2px black', textShadow: '4px 4px 0 #000' }}
@@ -296,7 +301,7 @@ export default function TripPage() {
                 Dream Trip.
               </span>
             </h1>
-            <p className="mt-4 text-white/90 text-base md:text-lg font-bold max-w-md drop-shadow">
+            <p className="mt-4 text-white/90 text-sm sm:text-base md:text-lg font-bold max-w-md drop-shadow">
               Describe your journey — AI builds a personalised day-by-day itinerary in seconds.
             </p>
             <div className="flex flex-wrap gap-2 mt-6">
@@ -318,10 +323,10 @@ export default function TripPage() {
       </section>
 
       {/* ── Main Content ── */}
-      <main className="flex-1 w-full max-w-3xl mx-auto px-4 sm:px-6 py-12">
+      <main className="flex-1 w-full max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
 
         {/* Form Card */}
-        <div className="border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] bg-white">
+        <div className="border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] bg-white overflow-hidden">
           <div className="bg-[#f9e07a] border-b-4 border-black px-6 py-4 flex items-center gap-3">
             <span className="text-2xl">🗺️</span>
             <div>
@@ -330,7 +335,7 @@ export default function TripPage() {
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="p-6 space-y-5" noValidate>
+          <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-5" noValidate>
 
             {/* Destination */}
             <div className="space-y-1.5">
@@ -350,7 +355,7 @@ export default function TripPage() {
               />
             </div>
 
-            {/* Budget + Days — stack on mobile, grid on md+ */}
+            {/* Budget + Days */}
             <div className="flex flex-col gap-4 md:grid md:grid-cols-2">
               <div className="space-y-1.5">
                 <label htmlFor="budget" className="block text-xs font-black uppercase tracking-widest text-black">
@@ -426,7 +431,7 @@ export default function TripPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-4 border-4 border-black bg-black text-[#f9e07a] text-sm font-black uppercase tracking-widest shadow-[6px_6px_0px_0px_rgba(249,224,122,1)] hover:bg-[#111] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none transition-all duration-100 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full py-4 border-4 border-black bg-black text-[#f9e07a] text-sm font-black uppercase tracking-widest shadow-[6px_6px_0px_0px_rgba(249,224,122,1)] hover:bg-[#111] hover:shadow-[8px_8px_0px_0px_rgba(249,224,122,1)] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none transition-all duration-100 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isLoading ? (
                 <>
@@ -464,9 +469,9 @@ export default function TripPage() {
 
             <nav className="flex flex-wrap justify-center gap-2">
               {[
-                { label: 'About',   color: 'bg-[#a0d4f0]' },
-                { label: 'Docs',    color: 'bg-[#b8f0a0]' },
-                { label: 'GitHub',  color: 'bg-[#e0baff]' },
+                { label: 'About', color: 'bg-[#a0d4f0]' },
+                { label: 'Docs', color: 'bg-[#b8f0a0]' },
+                { label: 'GitHub', color: 'bg-[#e0baff]' },
                 { label: 'Contact', color: 'bg-[#f9a8d4]' },
               ].map(({ label, color }) => (
                 <a
@@ -482,7 +487,7 @@ export default function TripPage() {
 
           <div className="border-t-2 border-white/10 mt-6 pt-4 text-center">
             <p className="text-gray-600 text-xs font-bold uppercase tracking-widest">
-              Made with ❤️ · Neobrutalism Design System
+              Made with ❤️ · Neobrutalist Design System
             </p>
           </div>
         </div>

@@ -1,10 +1,3 @@
-"""
-routers/auth.py
-Authentication endpoints:
-  POST /api/v1/auth/register  — create account
-  POST /api/v1/auth/login     — obtain JWT access token
-"""
-
 from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy.orm import Session

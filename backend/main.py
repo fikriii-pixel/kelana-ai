@@ -14,7 +14,7 @@ from services.bedrock_service import get_ai_recommendation
 from services.auth_service import hash_password
 
 from dependencies import get_db, get_current_user
-from routers import auth
+from routers import auth, kb
 
 
 app = FastAPI(title="KelanaAI API", version="2.0.0")
@@ -30,6 +30,7 @@ app.add_middleware(
 init_db()
 
 app.include_router(auth.router)
+app.include_router(kb.router)
 
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
