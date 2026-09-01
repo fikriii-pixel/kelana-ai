@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import { askAssistant } from '@/lib/api';
@@ -215,9 +216,35 @@ export default function AssistantPage() {
                         : 'rounded-tl-sm bg-white text-sm sm:text-base text-gray-800'
                     }`}
                   >
-                    <p className="whitespace-pre-wrap leading-relaxed">
-                      {message.text}
-                    </p>
+                    {message.sender === 'assistant' ? (
+                      <div className="prose prose-sm max-w-none text-inherit">
+                        <ReactMarkdown
+                          components={{
+                            p: ({ children }) => <p className="leading-relaxed my-1">{children}</p>,
+                            strong: ({ children }) => (
+                              <strong className="font-black text-black bg-yellow-200 px-1 rounded-sm">
+                                {children}
+                              </strong>
+                            ),
+                            ul: ({ children }) => (
+                              <ul className="list-disc list-inside space-y-1.5 my-2 font-medium">
+                                {children}
+                              </ul>
+                            ),
+                            ol: ({ children }) => (
+                              <ol className="list-decimal list-inside space-y-1.5 my-2 font-medium">
+                                {children}
+                              </ol>
+                            ),
+                            hr: () => null,
+                          }}
+                        >
+                          {message.text}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      <p className="whitespace-pre-wrap leading-relaxed">{message.text}</p>
+                    )}
 
                     {/* Citation Badges */}
                     {message.sender === 'assistant' && message.sources && message.sources.length > 0 && (

@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 import traceback
 
@@ -12,44 +13,40 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL_ARN = (
     "arn:aws:bedrock:{region}::foundation-model/"
-    "anthropic.claude-3-sonnet-20240229-v1:0"
+    "amazon.nova-lite-v1:0"
 )
 
 
-def extract_sources_from_citations(response: dict) -> list[str]:
-    """Extract unique source document names from Bedrock citations.
-    
-    Args:
-        response: The response from bedrock-agent-runtime.retrieve_and_generate()
-    
-    Returns:
-        A deduplicated list of source document names (e.g., PDF filenames).
-        Returns an empty list if no sources are found.
-    """
-    sources = []
-    
-    if "citations" in response:
-        for citation in response["citations"]:
-            for ref in citation.get("retrievedReferences", []):
-                uri = ref.get("location", {}).get("s3Location", {}).get("uri", "")
-                if uri:
-                    # Extract filename from S3 URI (e.g., "s3://bucket/path/file.pdf" -> "file.pdf")
-                    filename = uri.split("/")[-1]
-                    if filename and filename not in sources:
-                        sources.append(filename)
-    
-    # Return empty list if no sources found (don't use a fake fallback)
+def clean_markdown_text(text: str) -> str:
+    """Normalize common markdown artifacts produced by LLM output before returning it."""
+    if not text:
+        return text
+
+    cleaned = re.sub(r"\*{3,}", "**", text)
+    cleaned = re.sub(r"(?m)^\s*[\*_\-]{3,}\s*$", "", cleaned)
+    return cleaned.strip()
+
+
+def extract_sources_from_retrieval_results(retrieval_response: dict) -> list[str]:
+    """Extract unique source document names from Bedrock Knowledge Base retrieval results."""
+    sources: list[str] = []
+
+    for result in retrieval_response.get("retrievalResults", []):
+        uri = (
+            result.get("location", {})
+            .get("s3Location", {})
+            .get("uri", "")
+        )
+        if uri:
+            filename = uri.split("/")[-1]
+            if filename and filename not in sources:
+                sources.append(filename)
+
     return sources
 
 
 def ask_knowledge_base(question: str) -> dict:
-    """Retrieve Knowledge Base context and generate a grounded answer.
-
-    Uses AWS Bedrock retrieve_and_generate to get both the answer and citations.
-    
-    Returns:
-        A dictionary containing both 'answer' and 'sources'.
-    """
+    """Retrieve relevant context from a Bedrock KB and answer with Nova Lite."""
     knowledge_base_id = os.getenv("KNOWLEDGE_BASE_ID")
     region = os.getenv("AWS_REGION", "us-east-1")
     model_arn = os.getenv(
@@ -63,44 +60,77 @@ def ask_knowledge_base(question: str) -> dict:
 
     try:
         logger.info(
-            "Querying Bedrock Knowledge Base %s in region %s with model %s",
+            "Retrieving context from Bedrock Knowledge Base %s in region %s using model %s",
             knowledge_base_id,
             region,
             model_arn,
         )
+
         knowledge_base_client = boto3.client(
             "bedrock-agent-runtime",
             region_name=region,
         )
-        
-        response = knowledge_base_client.retrieve_and_generate(
-            input={"text": question},
-            retrieveAndGenerateConfiguration={
-                "type": "KNOWLEDGE_BASE",
-                "knowledgeBaseConfiguration": {
-                    "knowledgeBaseId": knowledge_base_id,
-                    "modelArn": model_arn,
-                    "generationConfiguration": {
-                        "promptTemplate": {
-                            "textPromptTemplate": "You are KelanaAI, a helpful travel assistant. Answer the user's question using ONLY the provided context. If the context describes areas or attractions, summarize them clearly to assist the user. If the context does not contain enough information to answer, politely inform the user. Context: $search_results$ User Question: $output_format_instructions$"
-                        }
-                    },
-                },
-            },
+
+        retrieval_response = knowledge_base_client.retrieve(
+            knowledgeBaseId=knowledge_base_id,
+            retrievalQuery={"text": question},
         )
-        
-        # Extract answer from response
-        answer = response.get("output", {}).get("text", "")
-        if not answer:
+
+        retrieval_results = retrieval_response.get("retrievalResults", [])
+        sources = extract_sources_from_retrieval_results(retrieval_response)
+
+        context_chunks = []
+        for result in retrieval_results:
+            content = result.get("content", {}).get("text", "")
+            if content:
+                context_chunks.append(content)
+
+        context_text = "\n\n".join(dict.fromkeys(context_chunks))
+
+        if not context_text:
+            return {
+                "answer": "I could not find relevant context in the knowledge base for this question.",
+                "sources": sources,
+            }
+
+        bedrock_runtime = boto3.client(
+            "bedrock-runtime",
+            region_name=region,
+        )
+
+        prompt = (
+            "You are KelanaAI. Answer the user's question using ONLY the provided context.\n\n"
+            f"Context:\n{context_text}\n\n"
+            f"Question: {question}"
+        )
+
+        response = bedrock_runtime.converse(
+            modelId=model_arn,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [{"text": prompt}],
+                }
+            ],
+        )
+
+        answer_text = ""
+        content_blocks = response.get("output", {}).get("message", {}).get("content", [])
+        for block in content_blocks:
+            if "text" in block:
+                answer_text = block["text"]
+                break
+
+        if not answer_text:
             raise RuntimeError("Bedrock returned an empty answer")
-        
-        # Extract sources from citations
-        sources = extract_sources_from_citations(response)
-        
+
+        sanitized_answer = clean_markdown_text(answer_text)
+
         return {
-            "answer": answer,
+            "answer": sanitized_answer,
             "sources": sources,
         }
+
     except ClientError as exc:
         error = exc.response.get("Error", {})
         code = error.get("Code", "Unknown")
