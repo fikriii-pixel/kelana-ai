@@ -175,6 +175,13 @@ export default function Navbar({
               {isAuthed && (
                 <>
                   <Link
+                    href="/chat"
+                    className="inline-flex items-center justify-center border-2 border-black bg-[#FFE600] hover:bg-yellow-300 text-black text-sm font-black w-9 h-9 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
+                    aria-label="Chat"
+                  >
+                    💬
+                  </Link>
+                  <Link
                     href="/assistant"
                     className="inline-flex items-center justify-center border-2 border-black bg-[#FFE600] hover:bg-yellow-300 text-black text-sm font-black w-9 h-9 rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all duration-100"
                     aria-label="Ask AI Assistant"
@@ -237,6 +244,13 @@ export default function Navbar({
           {/* Authenticated Mobile Links */}
           {isAuthed && (
             <>
+              <Link
+                href="/chat"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="flex items-center justify-center gap-2 w-full border-2 border-black bg-[#FFE600] hover:bg-yellow-300 text-black text-sm font-black uppercase tracking-widest px-4 py-3.5 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all duration-100"
+              >
+                💬 Chat
+              </Link>
               <Link
                 href="/assistant"
                 onClick={() => setIsMobileMenuOpen(false)}

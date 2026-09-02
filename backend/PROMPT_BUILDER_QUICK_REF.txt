@@ -1,0 +1,189 @@
+"""
+PROMPT BUILDER SERVICE — QUICK REFERENCE
+
+File: services/prompt_builder.py
+Purpose: Transform naive user queries into context-aware multi-turn prompts for AWS Bedrock
+
+CONFIGURATION
+=============
+MAX_HISTORY_TURNS = 10  (truncate to last 10 conversation turns for token efficiency)
+
+SYSTEM_PROMPT (KelanaAI Persona)
+  "You are KelanaAI, an aesthetic, friendly, and highly knowledgeable travel 
+   assistant for Indonesian travelers. Answer concisely using Markdown formatting..."
+
+KEY FUNCTIONS
+=============
+
+1. build_bedrock_messages(history, current_question, max_turns=10)
+   
+   Purpose: Format conversation history for Bedrock's converse() API
+   
+   Input:
+     - history: list[Message]  (DB models ordered by created_at ASC)
+     - current_question: str   (user's latest query)
+     - max_turns: int          (keep last N turns, default 10)
+   
+   Output: list[dict]
+     [
+       {"role": "user", "content": "..."},
+       {"role": "assistant", "content": "..."},
+       ...
+       {"role": "user", "content": current_question}
+     ]
+   
+   Use when: Calling Bedrock converse() or similar structured message APIs
+   
+   Example:
+     bedrock_messages = build_bedrock_messages(history, "Tell me about Bali")
+     response = bedrock_client.converse(
+         modelId="amazon.nova-lite-v1:0",
+         system=[{"text": SYSTEM_PROMPT}],
+         messages=bedrock_messages
+     )
+
+---
+
+2. build_rag_prompt(history, current_question, retrieved_context=None, max_turns=10)
+   
+   Purpose: Build a unified prompt with system + context + history + question
+   
+   Input:
+     - history: list[Message]        (DB models, ordered by created_at ASC)
+     - current_question: str         (user's latest query)
+     - retrieved_context: list[str]  (KB context snippets, optional)
+     - max_turns: int                (keep last N turns, default 10)
+   
+   Output: str (formatted prompt text)
+   
+   Sections in output:
+     1. SYSTEM INSTRUCTIONS (KelanaAI persona)
+     2. RETRIEVED KNOWLEDGE BASE CONTEXT (if provided)
+     3. CONVERSATION HISTORY (formatted user/assistant pairs)
+     4. CURRENT QUESTION
+     5. RESPONSE header
+   
+   Use when: You need a single prompt text with all context layers
+   
+   Example (as used in routers/messages.py):
+     rag_context = [bedrock_answer] if bedrock_answer else []
+     full_prompt = build_rag_prompt(
+         history=previous_messages,
+         current_question=user_content,
+         retrieved_context=rag_context
+     )
+
+---
+
+3. build_simple_prompt(current_question, system_instruction=SYSTEM_PROMPT)
+   
+   Purpose: Build a simple stateless prompt (no history)
+   
+   Input:
+     - current_question: str  (standalone user query)
+     - system_instruction: str (custom system prompt, optional)
+   
+   Output: str (formatted prompt)
+   
+   Use when: No conversation history needed
+   
+   Example:
+     prompt = build_simple_prompt("What's the weather in Jakarta?")
+
+---
+
+4. get_context_window_info() -> dict
+   
+   Purpose: Return configuration details for debugging
+   
+   Output:
+     {
+       "max_history_turns": 10,
+       "max_history_messages": 20,
+       "system_prompt_length": 567
+     }
+   
+   Use when: Inspecting configuration or logging
+
+INTEGRATION IN routers/messages.py
+==================================
+
+Location: create_message() endpoint - STEP 4
+
+Step 1: Query Bedrock KB
+  kb_response = ask_knowledge_base(user_content)
+  bedrock_answer = kb_response.get("answer", "")
+  sources = kb_response.get("sources", [])
+
+Step 2: Build context-aware prompt
+  rag_context_list = [bedrock_answer] if bedrock_answer else []
+  full_prompt = build_rag_prompt(
+      history=previous_messages,
+      current_question=user_content,
+      retrieved_context=rag_context_list,
+  )
+
+Step 3: Use the assistant response
+  assistant_content = bedrock_answer
+  (Save to database)
+
+CONTEXT WINDOW MANAGEMENT
+=========================
+
+History Truncation:
+  - Fetches last N turns (1 turn = 1 user message + 1 assistant response)
+  - Default: MAX_HISTORY_TURNS = 10 (= 20 messages max)
+  - Older messages are discarded to prevent token overflow
+
+Automatic Handling:
+  ✓ Empty history gracefully handled
+  ✓ Odd number of messages handled (incomplete turn at end)
+  ✓ Logged during truncation for debugging
+
+SYSTEM PROMPT DETAILS
+=====================
+
+Content:
+  - KelanaAI persona (friendly, knowledgeable, aesthetic)
+  - Markdown formatting rules
+  - NO triple asterisks (***)
+  - NO empty horizontal dividers (---)
+  - Indonesian travelers focus
+
+Location: SYSTEM_PROMPT constant in services/prompt_builder.py
+
+Can be customized per use case by passing to build_simple_prompt()
+
+ERROR HANDLING
+==============
+
+Graceful defaults:
+  ✓ None/empty history → prompt built without history section
+  ✓ None/empty retrieved_context → context section omitted
+  ✓ Invalid Message objects → filtered out during processing
+
+Exceptions:
+  ✓ Logs all truncations and transformations
+  ✓ Validates input types (history must be list[Message])
+  ✓ Returns empty prompt sections if inputs are invalid
+
+BEST PRACTICES
+==============
+
+1. Always use prompt builder for consistency
+2. Choose strategy based on API being called
+3. Keep max_turns=10 for optimal token usage
+4. Log built prompts during development
+5. Monitor token usage in production
+6. Don't manually format prompts—use the builder
+
+IMPORT STATEMENT
+================
+
+from services.prompt_builder import (
+    build_bedrock_messages,
+    build_rag_prompt,
+    build_simple_prompt,
+    get_context_window_info,
+)
+"""

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { setToken, getToken } from '@/lib/api';
@@ -32,15 +32,15 @@ function Spinner() {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function LoginPage() {
-  const router       = useRouter();
+function LoginContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { showToast } = useToast();
   const { fetchUserProfile } = useAuth();
 
-  const [form, setForm]         = useState<LoginForm>({ email: '', password: '' });
+  const [form, setForm] = useState<LoginForm>({ email: '', password: '' });
   const [isLoading, setLoading] = useState(false);
-  const [error, setError]       = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [showPass, setShowPass] = useState(false);
 
   // Already logged in — skip to trips
@@ -269,5 +269,13 @@ export default function LoginPage() {
         </div>
       </footer>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#f4f4f0] text-black font-black uppercase tracking-widest">Loading...</div>}>
+      <LoginContent />
+    </Suspense>
   );
 }

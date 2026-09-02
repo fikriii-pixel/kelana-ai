@@ -25,12 +25,12 @@ export const metadata: Metadata = {
   description: "Generate AI-powered travel itineraries in seconds with Kelana AI.",
 };
 
-type LayoutProps<T extends string> = {
+type LayoutProps = {
   children: React.ReactNode;
-  params?: Record<T, string>;
+  params?: Promise<Record<string, string>>;
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: LayoutProps) {
   return (
     <html
       lang="en"
