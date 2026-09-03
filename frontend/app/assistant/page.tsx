@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useRouter } from 'next/navigation';
-import { Menu, PanelLeftClose, Pencil, Trash2, UserCircle2 } from 'lucide-react';
+import { Check, Copy, Menu, PanelLeftClose, Pencil, Send, Trash2 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
+import { useAuth } from '@/lib/auth-context';
 import { useAuthGuard } from '@/lib/use-auth-guard';
 import { useToast } from '@/lib/toast-context';
 import {
@@ -23,29 +24,34 @@ interface ChatMessage {
   content: string;
   sources?: string[];
   created_at: string;
+  failed?: boolean;
 }
 
-const formatTimestamp = (dateString: string): string => {
-  const date = new Date(dateString);
-  const month = date.toLocaleDateString('en-US', { month: 'short' });
-  const day = date.getDate();
-  const time = date.toLocaleTimeString('en-US', {
+const formatTimestamp = (dateString: string): string => new Date(dateString).toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
   });
 
-  return `${month} ${day}, ${time}`;
-};
-
 const truncateTitle = (title: string, maxLength = 30): string =>
   title.length > maxLength ? `${title.slice(0, maxLength)}...` : title;
 
+const starterPrompts = [
+  ['✈️', '5-Day Tokyo Itinerary', 'Create a practical 5-day itinerary for Tokyo.'],
+  ['🛂', 'Japan Visa Requirements', 'What are the current visa requirements for visiting Japan?'],
+  ['🚅', 'Shinkansen Transport Guide', 'Explain how to use the Shinkansen and choose the right pass.'],
+  ['🍜', 'Local Food Worth Finding', 'What local foods and neighborhoods should I explore in Japan?'],
+];
+
 export default function AssistantPage() {
   const router = useRouter();
+  const { logout } = useAuth();
   const { showToast } = useToast();
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const optimisticMessageIdRef = useRef(0);
 
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
@@ -59,6 +65,8 @@ export default function AssistantPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [conversationToDelete, setConversationToDelete] = useState<ConversationListItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
 
   useAuthGuard(router, {
     showToast: true,
@@ -92,6 +100,7 @@ export default function AssistantPage() {
     setInput('');
     setError(null);
     setMessages([]);
+    shouldAutoScrollRef.current = true;
 
     try {
       await loadConversationMessages(conversationId);
@@ -141,18 +150,40 @@ export default function AssistantPage() {
   }, [showToast]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const chatContainer = chatContainerRef.current;
+    if (!chatContainer || !shouldAutoScrollRef.current) return;
+
+    requestAnimationFrame(() => {
+      chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+    });
   }, [messages, isLoading]);
+
+  const handleChatScroll = () => {
+    const chatContainer = chatContainerRef.current;
+    if (!chatContainer) return;
+
+    shouldAutoScrollRef.current =
+      chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < 100;
+  };
 
   useEffect(() => {
     inputRef.current?.focus();
   }, [activeId]);
+
+  useEffect(() => {
+    const textarea = inputRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+  }, [input]);
 
   const handleNewChat = async () => {
     try {
       setMessages([]);
       setInput('');
       setError(null);
+      shouldAutoScrollRef.current = true;
 
       const created = await createConversation();
       const newId = created.conversation_id;
@@ -167,8 +198,17 @@ export default function AssistantPage() {
   };
 
   const handleRenameConversation = async (conversationId: number, title: string) => {
+    const previousTitle = conversations.find((conversation) => conversation.id === conversationId)?.title;
+    const optimisticTitle = title.trim();
+
+    setConversations((prev) =>
+      prev.map((conversation) =>
+        conversation.id === conversationId ? { ...conversation, title: optimisticTitle } : conversation
+      )
+    );
+
     try {
-      const updated = await updateConversationTitle(conversationId, title);
+      const updated = await updateConversationTitle(conversationId, optimisticTitle);
       setConversations((prev) =>
         prev.map((conversation) =>
           conversation.id === conversationId
@@ -182,6 +222,13 @@ export default function AssistantPage() {
       );
       showToast('Conversation renamed', 'success');
     } catch (err) {
+      if (previousTitle) {
+        setConversations((prev) =>
+          prev.map((conversation) =>
+            conversation.id === conversationId ? { ...conversation, title: previousTitle } : conversation
+          )
+        );
+      }
       const message = err instanceof Error ? err.message : 'Failed to rename conversation';
       setError(message);
       showToast(message, 'error');
@@ -235,48 +282,55 @@ export default function AssistantPage() {
     }
   };
 
-  const handleSubmit = async (event?: FormEvent<HTMLFormElement>) => {
-    event?.preventDefault();
+  const sendContent = async (content: string, existingMessageId?: number) => {
+    if (!content.trim() || activeId === null || isLoading) return;
 
-    if (!input.trim() || activeId === null) return;
-
-    const content = input.trim();
-
-    setInput('');
+    const cleanContent = content.trim();
+    const messageId = existingMessageId ?? --optimisticMessageIdRef.current;
+    shouldAutoScrollRef.current = true;
     setError(null);
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
+
+    if (existingMessageId) {
+      setMessages((prev) => prev.map((message) =>
+        message.id === existingMessageId ? { ...message, failed: false } : message
+      ));
+    } else {
+      setInput('');
+      setMessages((prev) => [...prev, {
+        id: messageId,
         role: 'user',
-        content,
+        content: cleanContent,
         created_at: new Date().toISOString(),
-      },
-    ]);
+      }]);
+    }
+
     setIsLoading(true);
-
     try {
-      const response = await sendMessage(activeId, content);
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: response.id,
-          role: 'assistant',
-          content: response.content,
-          sources: response.sources || [],
-          created_at: response.created_at,
-        },
-      ]);
-
+      const response = await sendMessage(activeId, cleanContent);
+      setMessages((prev) => [...prev, {
+        id: response.id,
+        role: 'assistant',
+        content: response.content,
+        sources: response.sources || [],
+        created_at: response.created_at,
+      }]);
       await refreshConversations();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to send message';
+      setMessages((prev) => prev.map((item) =>
+        item.id === messageId ? { ...item, failed: true } : item
+      ));
       setError(message);
       showToast(message, 'error');
     } finally {
       setIsLoading(false);
+      inputRef.current?.focus();
     }
+  };
+
+  const handleSubmit = (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+    void sendContent(input);
   };
 
   const onTextareaKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -288,13 +342,27 @@ export default function AssistantPage() {
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-[#F4F4F0]">
-      <Navbar actionHref="/trips" actionLabel="My Trips" />
+        <Navbar
+          backHref="/"
+          backLabel="← Back"
+          actionHref="/"
+          actionLabel="+ New Trip"
+          onLogoutRequest={() => setShowLogoutModal(true)}
+        />
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden border-b-2 border-black">
+        {isSidebarOpen && (
+          <button
+            type="button"
+            onClick={() => setIsSidebarOpen(false)}
+            className="fixed inset-0 z-20 bg-black/50 backdrop-blur-sm lg:hidden"
+            aria-label="Close conversations sidebar"
+          />
+        )}
         <aside
           className={[
-            'flex h-full shrink-0 flex-col border-r-2 border-black bg-white transition-all duration-300 ease-in-out',
-            isSidebarOpen ? 'w-72 opacity-100' : 'w-0 overflow-hidden border-none opacity-0',
+            'absolute inset-y-0 left-0 z-30 flex h-full w-72 shrink-0 flex-col border-r-2 border-black bg-white transition-all duration-300 ease-in-out lg:relative',
+            isSidebarOpen ? 'translate-x-0 opacity-100 lg:w-72' : '-translate-x-full opacity-0 lg:w-0 lg:overflow-hidden lg:border-none',
           ].join(' ')}
         >
           <div className="flex h-full min-w-0 flex-col">
@@ -411,16 +479,6 @@ export default function AssistantPage() {
                 )}
               </div>
             </div>
-
-            <div className="border-t border-black bg-[#F9F9F7] p-3">
-              <div className="flex items-center gap-3 rounded-md border border-black bg-white p-2">
-                <UserCircle2 className="h-7 w-7 text-black" />
-                <div className="min-w-0">
-                  <p className="truncate text-[11px] font-black uppercase tracking-wide text-black">Travel Planner</p>
-                  <p className="text-[10px] font-medium text-black/60">Online</p>
-                </div>
-              </div>
-            </div>
           </div>
         </aside>
 
@@ -437,16 +495,23 @@ export default function AssistantPage() {
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#F4F4F0]">
           <div className="flex flex-1 flex-col overflow-hidden">
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+            <div ref={chatContainerRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto p-4 sm:p-6">
               <div className="mx-auto w-full max-w-3xl space-y-4">
                 {messages.length === 0 && !isLoading && (
-                  <div className="flex min-h-80 flex-col items-center justify-center space-y-4 text-center">
-                    <div className="text-6xl">✈️</div>
-                    <div className="space-y-2">
-                      <h2 className="text-3xl font-black uppercase tracking-tight text-black">Start planning</h2>
-                      <p className="max-w-md text-sm font-medium text-black/60">
-                        Ask about flights, itineraries, local tips, or visa details for your next trip.
-                      </p>
+                  <div className="flex min-h-80 flex-col justify-center py-8">
+                    <div className="mb-7">
+                      <div className="mb-3 inline-block border-2 border-black bg-yellow-400 px-2 py-1 text-xs font-black uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">Your travel desk</div>
+                      <h2 className="max-w-xl text-4xl font-black uppercase leading-none tracking-tight text-black sm:text-6xl">Where should we take you?</h2>
+                      <p className="mt-4 max-w-lg text-sm font-bold leading-relaxed text-black/60">Ask for an itinerary, transport advice, or the details that make a trip feel like yours.</p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {starterPrompts.map(([icon, label, prompt]) => (
+                        <button key={label} type="button" onClick={() => void sendContent(prompt)} className="group border-2 border-black bg-white p-4 text-left shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition hover:-translate-y-0.5 hover:bg-[#b8f0a0]">
+                          <span className="text-2xl">{icon}</span>
+                          <span className="mt-3 block text-sm font-black uppercase">{label}</span>
+                          <span className="mt-1 block text-xs font-bold text-black/50">Ask KelanaAI →</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -454,7 +519,7 @@ export default function AssistantPage() {
                 {messages.map((message) => (
                   <div
                     key={message.id}
-                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    className={`flex flex-col ${message.role === 'user' ? 'items-end' : 'items-start'}`}
                   >
                     <div
                       className={`max-w-[85%] rounded-md border-2 border-black p-4 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] ${
@@ -494,23 +559,43 @@ export default function AssistantPage() {
                               key={`${source}-${index}`}
                               className="border border-black bg-gray-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-black"
                             >
-                              {source}
+                              <span aria-hidden="true">📄</span> {source}
                             </span>
                           ))}
                         </div>
                       )}
+
+                      {message.role === 'assistant' && (
+                        <div className="mt-3 flex justify-end border-t border-black/20 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => void navigator.clipboard.writeText(message.content).then(() => {
+                              setCopiedId(message.id);
+                              window.setTimeout(() => setCopiedId(null), 1600);
+                            }).catch(() => showToast('Could not copy message', 'error'))}
+                            className="inline-flex items-center gap-1 border border-black bg-white px-2 py-1 text-[10px] font-black uppercase shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] hover:bg-yellow-200"
+                            aria-label="Copy assistant message"
+                          >
+                            {copiedId === message.id ? <Check className="h-3 w-3 text-green-700" /> : <Copy className="h-3 w-3" />}
+                            {copiedId === message.id ? 'Copied' : 'Copy'}
+                          </button>
+                        </div>
+                      )}
                     </div>
+                    <time className="mt-1 px-1 text-xs font-bold text-black opacity-70" dateTime={message.created_at}>
+                      {formatTimestamp(message.created_at)}
+                      {message.failed && <>
+                        <span className="ml-2 text-red-600">Send failed</span>
+                        <button type="button" onClick={() => void sendContent(message.content, message.id)} className="ml-2 font-black uppercase text-red-700 underline">Retry</button>
+                      </>}
+                    </time>
                   </div>
                 ))}
 
                 {isLoading && (
                   <div className="flex justify-start">
-                    <div className="rounded-md border-2 border-black bg-white p-4 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 animate-bounce rounded-full bg-black [animation-delay:-0.3s]" />
-                        <span className="h-2 w-2 animate-bounce rounded-full bg-black [animation-delay:-0.15s]" />
-                        <span className="h-2 w-2 animate-bounce rounded-full bg-black" />
-                      </div>
+                    <div className="border-2 border-black bg-white p-3 text-sm font-black uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                      KelanaAI is thinking <span className="inline-flex gap-1 align-middle"><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-black [animation-delay:-.3s]" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-black [animation-delay:-.15s]" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-black" /></span>
                     </div>
                   </div>
                 )}
@@ -540,15 +625,16 @@ export default function AssistantPage() {
                     maxLength={5000}
                     disabled={isLoading || activeId === null}
                     placeholder="Ask me about travel plans..."
-                    className="flex-1 resize-none border-none bg-transparent px-2 py-2 text-sm font-medium text-black outline-none placeholder:text-black/50 disabled:cursor-not-allowed"
+                    className="max-h-[120px] min-h-[40px] flex-1 resize-none border-none bg-transparent px-2 py-2 text-sm font-medium text-black outline-none placeholder:text-black/50 disabled:cursor-not-allowed"
                   />
 
                   <button
                     type="submit"
                     disabled={isLoading || !input.trim() || activeId === null}
-                    className="inline-flex items-center justify-center rounded-md border border-black bg-yellow-400 px-4 py-2 text-xs font-black uppercase text-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition hover:bg-yellow-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-yellow-400 px-3 text-xs font-black uppercase text-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition hover:bg-yellow-500 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {isLoading ? 'Sending...' : 'Send'}
+                    <Send className="h-4 w-4" />
+                    <span className="hidden sm:inline">{isLoading ? 'Sending...' : 'Send'}</span>
                   </button>
                 </form>
 
@@ -594,6 +680,19 @@ export default function AssistantPage() {
               >
                 {isDeleting ? 'Deleting...' : 'Delete'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLogoutModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="logout-title">
+          <div className="w-full max-w-md border-4 border-black bg-white p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+            <h2 id="logout-title" className="text-xl font-black uppercase tracking-tight text-black">Leave KelanaAI?</h2>
+            <p className="mt-3 text-sm font-medium text-black/70">You can come back anytime to continue planning your trips.</p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => setShowLogoutModal(false)} className="border-2 border-black bg-white px-4 py-2 text-xs font-black uppercase text-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">Stay</button>
+              <button type="button" onClick={() => { logout(); router.push('/login'); }} className="border-2 border-black bg-red-500 px-4 py-2 text-xs font-black uppercase text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">Log out</button>
             </div>
           </div>
         </div>

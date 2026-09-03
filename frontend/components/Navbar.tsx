@@ -17,16 +17,19 @@ interface NavbarProps {
   actionLabel?: string;
   /** Custom className for additional styling */
   className?: string;
+  /** Optional logout confirmation handler supplied by the page. */
+  onLogoutRequest?: () => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Navbar({
   backHref,
-  backLabel = '← Back',
+  backLabel = 'Back',
   actionHref,
   actionLabel,
   className = '',
+  onLogoutRequest,
 }: NavbarProps) {
   const router = useRouter();
   const { showToast } = useToast();
@@ -57,6 +60,11 @@ export default function Navbar({
   }, []);
 
   const handleLogout = () => {
+    if (onLogoutRequest) {
+      onLogoutRequest();
+      return;
+    }
+
     showToast('Signed out successfully.', 'info');
     logout();
     router.refresh();
